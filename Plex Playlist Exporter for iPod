@@ -5,18 +5,33 @@ import os
 import pwd
 import xml.etree.ElementTree as ET
 import random
+import re
+
+
+# ===== GET PLEX TOKEN ===== #
+def get_plex_token():
+    path = "/mnt/user/appdata/Plex-Media-Server/Library/Application Support/Plex Media Server/Preferences.xml"
+    with open(path, "r") as f:
+        data = f.read()
+
+    match = re.search(r'PlexOnlineToken="([^"]+)"', data)
+    if not match:
+        raise Exception("Could not find PlexOnlineToken in Preferences.xml")
+
+    return match.group(1)
+
 
 # ===== CONFIG =====
-PLEX_URL = "YOUR_PLEX_URL"
-PLEX_TOKEN = "YOUR_PLEX_TOKEN"
+PLEX_URL = "YOUR_LOCAL_PLEX_URL"
+PLEX_TOKEN = get_plex_token()
 
-EXPORT_DIR = "/PATH/WHERE/PLAYLIST/FILES/WILL/BE/PLACED"
+EXPORT_DIR = "/PLAYLIST/EXPORT/DIRECTORY/"
 
 # Plex original FLAC root path
-PLEX_FLAC_ROOT = "FLAC/FILE/DIRECTORY"  # must match the path Plex reports
+PLEX_FLAC_ROOT = "/FLAC/FILE/DIRECTORY"  # must match the path Plex reports
 
 # iTunes ALAC root path (as seen on Windows)
-ITUNES_ALAC_ROOT = r"ALAC/FILE/DIRECTORY"
+ITUNES_ALAC_ROOT = r"/ALAC/FILE/DIRECTORY"
 
 # Ownership settings for Unraid
 USER = "YOUR_USER"
@@ -78,4 +93,4 @@ for pl in root.findall("Playlist"):
     # Fix ownership on Unraid
     os.chown(m3u_path, UID, GID)
 
-print("Plex playlists exported successfully with correct iTunes ALAC paths and randomized order!")
+print("Plex playlists exported successfully with correct iTunes ALAC paths and randomized order!") 
