@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+
+import requests
+import os
+import pwd
+import xml.etree.ElementTree as ET
+import random
+
+# ===== CONFIG =====
+PLEX_URL = "YOUR_PLEX_URL"
+PLEX_TOKEN = "YOUR_PLEX_TOKEN"
+
+EXPORT_DIR = "/PATH/WHERE/PLAYLIST/FILES/WILL/BE/PLACED"
+
+# Plex original FLAC root path
+PLEX_FLAC_ROOT = "FLAC/FILE/DIRECTORY"  # must match the path Plex reports
+
+# iTunes ALAC root path (as seen on Windows)
+ITUNES_ALAC_ROOT = r"ALAC/FILE/DIRECTORY"
+
+# Ownership settings for Unraid
+USER = "YOUR_USER"
+UID = pwd.getpwnam(USER).pw_uid
+GID = pwd.getpwnam(USER).pw_gid
+
+# Ensure export directory exists
+os.makedirs(EXPORT_DIR, exist_ok=True)
+
+# Plex headers
+headers = {"X-Plex-Token": PLEX_TOKEN}
+
+# Get all playlists from Plex
+playlists_resp = requests.get(f"{PLEX_URL}/playlists", headers=headers)
+root = ET.fromstring(playlists_resp.text)
+
+for pl in root.findall("Playlist"):
+    playlist_name = pl.attrib.get("title", "Unknown").replace("/", "_")
+    rating_key = pl.attrib.get("ratingKey")
+    m3u_path = os.path.join(EXPORT_DIR, f"{playlist_name}.m3u8")
+
+    # Get playlist items
+    items_resp = requests.get(f"{PLEX_URL}/playlists/{rating_key}/items", headers=headers)
+    items_root = ET.fromstring(items_resp.text)
+
+    tracks_list = []
+
+    for track in items_root.findall("Track"):
+        media = track.find("Media")
+        if media is not None:
+            part = media.find("Part")
+            if part is not None:
+                flac_path = part.attrib.get("file")
+                if flac_path:
+                    # Strip Plex FLAC root to get path relative to ALAC root
+                    if flac_path.startswith(PLEX_FLAC_ROOT):
+                        relative_part = flac_path[len(PLEX_FLAC_ROOT):].lstrip("/\\")
+                    else:
+                        relative_part = os.path.basename(flac_path)
+
+                    # Replace extension with .m4a for ALAC
+                    relative_part = os.path.splitext(relative_part)[0] + ".m4a"
+
+                    # Join with iTunes ALAC root
+                    windows_path = os.path.join(ITUNES_ALAC_ROOT, *relative_part.split("/"))
+                    windows_path = windows_path.replace("/", "\\")  # backslashes for Windows
+
+                    tracks_list.append(windows_path)
+
+    # Shuffle tracks
+    random.shuffle(tracks_list)
+
+    # Write to M3U file
+    with open(m3u_path, "w", encoding="utf-8-sig", newline="\r\n") as f:
+        f.write("#EXTM3U\r\n")  # required header for iTunes
+        for track_path in tracks_list:
+            f.write(track_path + "\r\n")
+
+    # Fix ownership on Unraid
+    os.chown(m3u_path, UID, GID)
+
+print("Plex playlists exported successfully with correct iTunes ALAC paths and randomized order!")
